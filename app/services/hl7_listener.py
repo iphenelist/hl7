@@ -34,6 +34,8 @@ _loop = None
 _flask_app = None
 _error_logger = None
 _error_logger_path = None
+_in_flight = 0         # messages currently being relayed to ERPNext
+_in_flight_lock = threading.Lock()
 
 
 # --------------------------------------------------------------------------- #
@@ -97,6 +99,11 @@ def stop_device(device_id) -> None:
     if _loop is None:
         return
     asyncio.run_coroutine_threadsafe(_stop_one(device_id), _loop)
+
+
+def get_in_flight() -> int:
+    """Number of messages being relayed right now (the updater waits for 0)."""
+    return _in_flight
 
 
 def get_listener_status() -> dict:
@@ -175,6 +182,17 @@ def _get_error_logger(logs_directory):
 
 def _relay(app, device_id, machine_make, machine_model, lab_test_name, message, timestamp) -> None:
     """Runs in a thread executor (blocking requests call) — reads fresh settings each time."""
+    global _in_flight
+    with _in_flight_lock:
+        _in_flight += 1
+    try:
+        _relay_one(app, device_id, machine_make, machine_model, lab_test_name, message, timestamp)
+    finally:
+        with _in_flight_lock:
+            _in_flight -= 1
+
+
+def _relay_one(app, device_id, machine_make, machine_model, lab_test_name, message, timestamp) -> None:
     with app.app_context():
         device = store.get_device(device_id)
         device_name = device.name if device else "Unknown"

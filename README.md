@@ -20,9 +20,27 @@ no restart needed.
 - **Linux:** double-click `setup_linux.sh` (or run `./setup_linux.sh`)
 - **Windows:** double-click `setup_windows.bat`
 
-The script auto-creates the virtual environment, installs dependencies,
-starts the app, and opens http://localhost:5050 in your browser. No manual
-venv or pip commands needed. Equivalent manual command:
+Nothing needs to be installed first. The script:
+
+1. Installs **Python 3.9+** and **Git** if they are missing
+   - Windows: via `winget`, falling back to the official python.org / Git for
+     Windows installers (per-user, silent)
+   - Linux: via the system package manager (`apt`, `dnf`, `yum`, `zypper`,
+     `pacman` or `apk`) — you'll be asked for your sudo password
+2. Downloads the app (git clone) if the script was run on its own — into
+   `~/hl7-relay` on Linux or `%LOCALAPPDATA%\HL7Relay` on Windows
+   (override with the `HL7_RELAY_HOME` environment variable)
+3. Creates the virtual environment, installs the Python packages, starts the
+   app, and opens http://localhost:5050 in your browser
+
+So the setup script alone is enough to install on a fresh machine. On Linux
+you can also run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Aakvatech-Limited/hl7/version-15-hotfix/setup_linux.sh | bash
+```
+
+Equivalent manual command once Python is installed:
 
 ```bash
 python3 run.py    # Windows: python run.py
@@ -68,6 +86,22 @@ appended to `logs/error.log`.
 > the old hardcoded port 5600), and keeps the old file as
 > `local_config.py.bak`.
 
+## Updates
+
+When installed from a git clone, the app checks
+[Aakvatech-Limited/hl7](https://github.com/Aakvatech-Limited/hl7)
+(`version-15-hotfix`) on startup and every 6 hours. If new commits exist, a
+popup lists them with an **Update now** button, which fast-forwards the clone,
+reinstalls dependencies when `requirements.txt` changed, and restarts the app.
+Settings (`config.json`, `.env`) are untouched, and lab machines reconnect on
+their own once the listeners are back up. **Later** hides the popup until a
+newer commit lands; the sidebar badge and **Settings → App Updates** stay
+available.
+
+The update is refused without changing files while a message is being relayed
+to ERPNext, when tracked files have local edits, or when the clone has its own
+commits. Zip installs do not expose automatic updates.
+
 ## Project Structure
 
 ```
@@ -82,7 +116,8 @@ hl7/
 │   │   └── api.py                JSON API (status, service management)
 │   ├── services/
 │   │   ├── hl7_listener.py       Multi-device MLLP listener manager (asyncio)
-│   │   └── erpnext_service.py    ERPNext REST API client
+│   │   ├── erpnext_service.py    ERPNext REST API client
+│   │   └── updater.py            Git-based update checks + safe apply
 │   └── templates/                Jinja2 HTML templates
 ├── config.py
 ├── run.py                        Auto-bootstrap launcher (venv + deps + start)

@@ -98,3 +98,32 @@ def service_info():
     status = service_manager.get_service_status()
     status["background_mode"] = IS_BACKGROUND
     return jsonify(status)
+
+
+@api_bp.route("/update/status")
+def update_status():
+    from app.services.updater import get_status
+    return jsonify(get_status())
+
+
+@api_bp.route("/update/check", methods=["POST"])
+def update_check():
+    from app.services.updater import check_for_updates
+    return jsonify(check_for_updates())
+
+
+@api_bp.route("/update/apply", methods=["POST"])
+def update_apply():
+    """Apply the latest official update, then restart this process."""
+    from app.services.updater import apply_update, restart_app
+
+    try:
+        result = apply_update()
+    except Exception as exc:
+        logger.exception("Update failed.")
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+    if result.get("success"):
+        restart_app()
+        return jsonify({**result, "restarting": True})
+    return jsonify(result), 409 if result.get("refused") else 500

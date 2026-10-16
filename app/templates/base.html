@@ -218,6 +218,10 @@
       <span class="status-dot online"></span>
       <span style="font-size:0.75rem; color:#8b949e;">Listener running</span>
     </div>
+    <button type="button" class="badge badge-warning-soft border-0 mt-2 d-none" id="updateBadge"
+            onclick="showUpdateModal()" style="cursor:pointer">
+      <i class="bi bi-cloud-arrow-down me-1"></i>Update available
+    </button>
   </div>
 </div>
 
@@ -236,6 +240,36 @@
   {% block content %}{% endblock %}
 </main>
 
+<!-- Update available popup -->
+<div class="modal fade" id="updateModal" tabindex="-1" aria-labelledby="updateModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="background:var(--card-bg); border:1px solid var(--sidebar-border)">
+      <div class="modal-header" style="border-color:var(--sidebar-border)">
+        <h5 class="modal-title fs-6 fw-semibold" id="updateModalTitle">
+          <i class="bi bi-cloud-arrow-down me-2" style="color:var(--accent)"></i>Update available
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2" style="color:#8b949e">
+          A newer version of HL7 Relay has been published. Updating downloads the changes
+          and restarts the app — your settings and devices are kept. Lab machines reconnect
+          on their own after the restart.
+        </p>
+        <ul class="list-unstyled small mb-0" id="updateCommits"></ul>
+        <div class="alert alert-danger small mt-3 mb-0 d-none" id="updateError" style="white-space:pre-wrap"></div>
+        <div class="alert alert-success small mt-3 mb-0 d-none" id="updateProgress"></div>
+      </div>
+      <div class="modal-footer" style="border-color:var(--sidebar-border)">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="updateLaterBtn" data-bs-dismiss="modal">Later</button>
+        <button type="button" class="btn btn-sm btn-primary" id="updateNowBtn" onclick="applyUpdate()">
+          <i class="bi bi-download me-1"></i>Update now
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function toggleSidebar() {
@@ -248,6 +282,78 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
 }
+
+// Update popup: shown when the official repo has commits this install lacks.
+// "Later" hides it until an even newer commit is published.
+let updateInfo = null;
+function _dismissedSha() { try { return localStorage.getItem('updateDismissedSha'); } catch (e) { return null; } }
+function _escape(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function renderUpdate(info) {
+  updateInfo = info;
+  const badge = document.getElementById('updateBadge');
+  if (!info || !info.available) { badge.classList.add('d-none'); return false; }
+  badge.classList.remove('d-none');
+  document.getElementById('updateModalTitle').lastChild.textContent =
+    ` Update available — ${info.behind} new change${info.behind === 1 ? '' : 's'}`;
+  document.getElementById('updateCommits').innerHTML = info.commits.map(c =>
+    `<li class="py-1" style="border-bottom:1px solid var(--sidebar-border)">
+       <code style="color:var(--accent)">${_escape(c.sha)}</code>
+       <span style="color:#e6edf3">${_escape(c.subject)}</span>
+       <span style="color:#8b949e">· ${_escape(c.date)}</span>
+     </li>`).join('') +
+    (info.behind > info.commits.length
+      ? `<li class="pt-1" style="color:#8b949e">…and ${info.behind - info.commits.length} more</li>` : '');
+  return true;
+}
+
+function showUpdateModal() {
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('updateModal')).show();
+}
+
+document.getElementById('updateModal').addEventListener('hidden.bs.modal', () => {
+  if (updateInfo && updateInfo.remote_sha) {
+    try { localStorage.setItem('updateDismissedSha', updateInfo.remote_sha); } catch (e) {}
+  }
+});
+
+async function applyUpdate() {
+  const nowBtn = document.getElementById('updateNowBtn');
+  const laterBtn = document.getElementById('updateLaterBtn');
+  const err = document.getElementById('updateError');
+  const prog = document.getElementById('updateProgress');
+  nowBtn.disabled = laterBtn.disabled = true;
+  err.classList.add('d-none');
+  nowBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Updating…';
+  try {
+    const res = await fetch('/api/update/apply', { method: 'POST' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Update failed');
+    prog.textContent = data.message || 'Updated. Restarting…';
+    prog.classList.remove('d-none');
+    await new Promise(r => setTimeout(r, 4000));   // server is re-executing
+    for (let i = 0; i < 30; i++) {
+      try {
+        const ping = await fetch('/api/status', { cache: 'no-store' });
+        if (ping.ok) { location.reload(); return; }
+      } catch (e) { /* still restarting */ }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    throw new Error('The app has not come back after updating. Start it again with run.py.');
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('d-none');
+    nowBtn.disabled = laterBtn.disabled = false;
+    nowBtn.innerHTML = '<i class="bi bi-download me-1"></i>Update now';
+  }
+}
+
+(async function () {
+  try {
+    const info = await (await fetch('/api/update/status')).json();
+    if (renderUpdate(info) && info.remote_sha !== _dismissedSha()) showUpdateModal();
+  } catch (e) { /* offline — ignore */ }
+})();
 </script>
 {% block scripts %}{% endblock %}
 </body>

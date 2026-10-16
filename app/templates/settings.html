@@ -87,6 +87,19 @@
         </div>
       </div>
     </div>
+    <!-- App Updates -->
+    <div class="card mt-4">
+      <div class="card-header"><i class="bi bi-cloud-arrow-down me-1"></i>App Updates</div>
+      <div class="card-body p-4">
+        <p class="mb-1" style="font-size:0.875rem">
+          Current version: <code id="updCurrent">—</code>
+        </p>
+        <p class="mb-3" style="font-size:0.875rem; color:#8b949e" id="updState">Checking…</p>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="updCheckBtn" onclick="checkUpdates()">
+          <i class="bi bi-arrow-clockwise me-1"></i>Check for Updates
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Help sidebar -->
@@ -184,6 +197,32 @@ async function serviceStop() {
     svcRefreshStatus();
   }
 }
+
+function updShow(info) {
+  document.getElementById("updCurrent").textContent = info.current_sha || "unknown";
+  const el = document.getElementById("updState");
+  if (!info.supported) el.textContent = "Automatic updates need the app to be installed from git.";
+  else if (info.error) el.textContent = "Could not check for updates: " + info.error;
+  else if (info.available) el.textContent = `${info.behind} new change(s) available.`;
+  else if (info.checked_at) el.textContent = `Up to date (checked ${info.checked_at}).`;
+  else el.textContent = "Not checked yet.";
+}
+
+async function checkUpdates() {
+  const btn = document.getElementById("updCheckBtn");
+  btn.disabled = true;
+  document.getElementById("updState").textContent = "Checking…";
+  try {
+    const info = await (await fetch("/api/update/check", { method: "POST" })).json();
+    updShow(info);
+    if (renderUpdate(info)) showUpdateModal();
+  } catch (e) {
+    document.getElementById("updState").textContent = "Could not reach the app.";
+  }
+  btn.disabled = false;
+}
+
+fetch("/api/update/status").then(r => r.json()).then(updShow).catch(() => {});
 
 svcRefreshStatus();
 </script>
