@@ -1,55 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Messages — {{ device.name }}{% endblock %}
-
+{% set nav = "devices" %}
+{% block title %}{{ device.name }} messages{% endblock %}
+{% block back %}<a class="btn ghost icon-only back" href="{{ url_for('pages.devices') }}" aria-label="Back to devices">{{ ui.icon("chevron-left") }}</a>{% endblock %}
 {% block content %}
-<div class="page-header">
-  <a href="{{ url_for('devices.index') }}" style="color:#8b949e; font-size:0.8rem; text-decoration:none">
-    <i class="bi bi-arrow-left me-1"></i>Devices
-  </a>
-  <h1 class="mt-1"><i class="bi bi-journal-code me-2" style="color:var(--accent)"></i>{{ device.name }} — Messages</h1>
-  <p>Port :{{ device.port }} &middot; Last 50 messages</p>
-</div>
+<div class="page-body w-7xl with-aside" data-live>
+  {% set history_desc %}The last 50 messages since the app started. Times in <span data-tz>your time zone</span>, updates live.{% endset %}
+  {% call ui.card("Message history", history_desc, flush=True) %}
+    {{ ui.message_list(logs, erpnext_url, empty_text="No messages from this machine yet. Run a test on the machine to check the connection.") }}
+  {% endcall %}
 
-<div class="card">
-  <div class="table-responsive">
-    <table class="table mb-0 card-table">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Status</th>
-          <th>Machine</th>
-          <th>Lab Test</th>
-          <th>Detail</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for log in logs %}
-        <tr>
-          <td data-label="Time" style="font-size:0.8rem; color:#8b949e; white-space:nowrap">
-            {{ log.timestamp.strftime('%d %b %Y %H:%M:%S') }}
-          </td>
-          <td data-label="Status">
-            {% if log.status == 'Success' %}
-              <span class="badge badge-success-soft">Success</span>
-            {% else %}
-              <span class="badge badge-danger-soft">Failed</span>
-            {% endif %}
-          </td>
-          <td data-label="Machine" style="font-size:0.875rem">
-            {{ log.machine_make or '—' }}{% if log.machine_model %} / {{ log.machine_model }}{% endif %}
-          </td>
-          <td data-label="Lab Test" style="font-size:0.875rem">{{ log.lab_test_name or '—' }}</td>
-          <td data-label="Detail" style="font-size:0.8rem; color:#8b949e">
-            {{ log.erpnext_name or log.error or '—' }}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="5" class="text-center py-5" style="color:#8b949e">No messages for this device yet.</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% call ui.help("Device", "flask-conical") %}
+    <div style="margin-bottom:12px">{{ ui.badge(device.state.label, device.state.theme) }}</div>
+    {% if device.state.note and not device.online %}
+    <p style="margin-bottom:12px" class="{{ 'tone-red' if device.state.theme == 'red' else ('tone-amber' if device.state.theme == 'amber') }}">{{ device.state.note }}</p>
+    {% endif %}
+    <dl>
+      {% if device.mode == "connect" %}
+      <div><dt>Connects to</dt><dd style="font-weight:420">{{ device.address }} (the machine is the server)</dd></div>
+      {% else %}
+      <div><dt>Send messages to</dt><dd style="font-weight:420">{{ lan_ip or "This computer's IP" }}, port {{ device.port }}</dd></div>
+      {% endif %}
+      <div><dt>Last message</dt><dd style="font-weight:420">{{ ui.time(device.last_message_at, "full", empty="None yet") }}</dd></div>
+    </dl>
+    <a class="btn" style="margin-top:16px" href="{{ url_for('pages.edit_device', device_id=device.id) }}">{{ ui.icon("pencil") }} Edit device</a>
+    <p class="text-xs muted" style="margin-top:16px">History is kept in memory and clears when the app restarts. Failed messages are also written to <code>error.log</code>.</p>
+  {% endcall %}
 </div>
 {% endblock %}

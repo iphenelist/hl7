@@ -109,7 +109,7 @@ def _install_linux() -> dict:
     venv_python = _get_venv_python()
     server_py = os.path.join(APP_DIR, "server.py")
     log_file = os.path.join(APP_DIR, "hl7_relay.log")
-    port = os.environ.get("HL7_DASHBOARD_PORT", "5050")
+    port = os.environ.get("HL7_DASHBOARD_PORT", "5151")
 
     # Paths are double-quoted in ExecStart because the app directory may
     # contain spaces; systemd splits unquoted arguments on whitespace.

@@ -3,7 +3,7 @@ Flask server entry point for HL7 Relay.
 
 Runs the app factory, starts the background MLLP listener manager (one
 listener per configured device) and the 6-hourly update check, and serves
-the dashboard on http://localhost:5050.
+the dashboard on http://localhost:5151.
 
 Normally launched via ``run.py`` (foreground) or the installed
 background service (systemd / Task Scheduler).
@@ -16,7 +16,7 @@ from app.services.hl7_listener import start_listener_background
 from app.services.updater import start_update_checker
 
 IS_BACKGROUND = os.environ.get("HL7_SERVICE_MODE") == "background"
-PORT = int(os.environ.get("HL7_DASHBOARD_PORT", 5050))
+PORT = int(os.environ.get("HL7_DASHBOARD_PORT", 5151))
 
 logging.basicConfig(
     level=logging.INFO,

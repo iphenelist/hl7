@@ -10,14 +10,13 @@ def create_app(config_class=Config):
     from app import store
     store.load()
 
-    from app.routes.dashboard import dashboard_bp
-    from app.routes.devices import devices_bp
-    from app.routes.settings import settings_bp
     from app.routes.api import api_bp
+    from app.routes.ui_api import ui_api_bp
+    from app.routes.pages import pages_bp
 
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(devices_bp, url_prefix="/devices")
-    app.register_blueprint(settings_bp, url_prefix="/settings")
+    # Server-rendered pages at /, the actions their buttons call under /api/ui
+    app.register_blueprint(pages_bp)
     app.register_blueprint(api_bp, url_prefix="/api")
+    app.register_blueprint(ui_api_bp, url_prefix="/api/ui")
 
     return app

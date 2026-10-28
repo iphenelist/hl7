@@ -1,95 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Devices — HL7 Relay{% endblock %}
-
+{% set nav = "devices" %}
+{% block title %}Devices{% endblock %}
+{% block actions %}
+<a class="btn solid" href="{{ url_for('pages.new_device') }}">{{ ui.icon("plus") }}<span class="label">Add device</span></a>
+{% endblock %}
 {% block content %}
-<div class="page-header d-flex align-items-start justify-content-between">
-  <div>
-    <h1><i class="bi bi-hdd-network me-2" style="color:var(--accent)"></i>Devices</h1>
-    <p>Each lab machine connects to its own dedicated MLLP port.</p>
-  </div>
-  <a href="{{ url_for('devices.new') }}" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-lg me-1"></i>Add Device
-  </a>
-</div>
+<div class="page-body w-7xl with-aside" data-live>
+  {% call ui.card("Lab machines", "Each machine sends to its own port, or the app connects to the machine. Deactivate one to stop it.", flush=True) %}
+    {{ ui.device_list(devices) }}
+  {% endcall %}
 
-<div class="card">
-  <div class="table-responsive">
-    <table class="table table-hover mb-0 card-table">
-      <thead>
-        <tr>
-          <th>Device Name</th>
-          <th>Port</th>
-          <th>Active</th>
-          <th>Listener Status</th>
-          <th>Last Message</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for device in devices %}
-        {% set s = status.get(device.id, {}) %}
-        <tr>
-          <td data-label="Device">
-            <span class="status-dot {% if s.running %}online{% else %}offline{% endif %} me-1"></span>
-            <strong>{{ device.name }}</strong>
-          </td>
-          <td data-label="Port">
-            <code style="color:#79c0ff">:{{ device.port }}</code>
-          </td>
-          <td data-label="Active">
-            {% if device.is_active %}
-              <span class="badge badge-success-soft">Yes</span>
-            {% else %}
-              <span class="badge badge-muted-soft">No</span>
-            {% endif %}
-          </td>
-          <td data-label="Listener Status">
-            {% if s.running %}
-              <span class="badge badge-success-soft">Listening</span>
-            {% elif not device.is_active %}
-              <span class="badge badge-muted-soft">Inactive</span>
-            {% else %}
-              <span class="badge badge-danger-soft" title="{{ s.error or '' }}">Stopped</span>
-            {% endif %}
-          </td>
-          <td data-label="Last Message" style="font-size:0.8rem; color:#8b949e">
-            {{ device.last_message_at.strftime('%d %b %Y %H:%M') if device.last_message_at else '—' }}
-          </td>
-          <td class="td-actions">
-            <div class="d-flex gap-1 flex-wrap">
-              <form method="POST" action="{{ url_for('devices.toggle', device_id=device.id) }}">
-                <button type="submit" class="btn btn-sm btn-outline-secondary" title="{{ 'Deactivate' if device.is_active else 'Activate' }}">
-                  <i class="bi bi-power"></i>
-                </button>
-              </form>
-              <a href="{{ url_for('devices.logs', device_id=device.id) }}"
-                class="btn btn-sm btn-outline-secondary" title="View messages">
-                <i class="bi bi-journal-text"></i>
-              </a>
-              <a href="{{ url_for('devices.edit', device_id=device.id) }}"
-                class="btn btn-sm btn-outline-secondary" title="Edit">
-                <i class="bi bi-pencil"></i>
-              </a>
-              <form method="POST" action="{{ url_for('devices.delete', device_id=device.id) }}"
-                onsubmit="return confirm('Delete {{ device.name }}?')">
-                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="6" class="text-center py-5" style="color:#8b949e">
-            <i class="bi bi-hdd-network" style="font-size:2rem; display:block; margin-bottom:0.5rem"></i>
-            No devices configured yet.
-            <a href="{{ url_for('devices.new') }}" class="d-block mt-1">Add your first device →</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% call ui.help("Connecting a lab machine") %}
+    <ol>
+      <li>Add the machine here and give it a port no other machine uses.</li>
+      <li>In the machine's LIS or HL7 settings, set the host to <b>{{ lan_ip or "this computer's IP address" }}</b> and the port to the one you chose.</li>
+      <li>Choose MLLP over TCP if the machine asks for a protocol.</li>
+      <li>Run a test. The message shows up here within a few seconds.</li>
+    </ol>
+    <p style="margin-top:8px">Some machines, like the Mindray BS-240 and BS-430, are the server themselves. For those, choose <b>The app connects to the machine</b> and enter the machine's IP and port.</p>
+    <h3 class="sub">Good to know</h3>
+    <ul>
+      <li>Messages from machines that send to this computer are answered with an HL7 acknowledgement once handled.</li>
+      <li>Messages that fail are also written to <code>error.log</code>.</li>
+      <li>A firewall on this computer must allow incoming connections on each port.</li>
+    </ul>
+  {% endcall %}
 </div>
 {% endblock %}

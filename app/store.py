@@ -3,7 +3,9 @@ JSON-file persistence for HL7 Relay.
 
 All app state lives in a single ``config.json`` next to the application:
   - settings: ERPNext credentials, logs directory/retention
-  - devices:  the list of lab machines, each with its own MLLP port
+  - devices:  the list of lab machines. A "listen" device sends to its own
+              MLLP port on this computer; a "connect" device is itself the
+              server, and the app connects out to its host and port.
 
 Message history is kept in memory only (lost on restart); the permanent
 record is the rotating ``logs/error.log`` file for failures.
@@ -72,6 +74,8 @@ class Device:
         self.id = raw["id"]
         self.name = raw.get("name", "")
         self.port = int(raw.get("port") or 5600)
+        self.mode = raw.get("mode") or "listen"   # "listen" | "connect"
+        self.host = raw.get("host") or ""
         self.is_active = bool(raw.get("is_active", True))
         self.last_message_at = _parse_dt(raw.get("last_message_at"))
         self.created_at = _parse_dt(raw.get("created_at"))
@@ -88,6 +92,8 @@ class Device:
             "id": self.id,
             "name": self.name,
             "port": self.port,
+            "mode": self.mode,
+            "host": self.host,
             "is_active": self.is_active,
             "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
             "last_message_status": self.last_message_status,
@@ -220,17 +226,18 @@ def get_device(device_id: int):
 
 
 def _port_in_use(port: int, exclude_id: int = None) -> bool:
+    """Only listen devices bind a port here; a connect device's port is on the analyzer."""
     return any(
-        d["port"] == port and d["id"] != exclude_id
+        d["port"] == port and d["id"] != exclude_id and d.get("mode", "listen") == "listen"
         for d in _data["devices"]
     )
 
 
-def add_device(name, port, is_active=True) -> Device:
+def add_device(name, port, is_active=True, mode="listen", host="") -> Device:
     with _lock:
         _ensure_loaded()
         port = int(port)
-        if _port_in_use(port):
+        if mode == "listen" and _port_in_use(port):
             raise ValueError(f"Port {port} is already used by another device.")
         new_id = _data["next_device_id"]
         _data["next_device_id"] = new_id + 1
@@ -238,6 +245,8 @@ def add_device(name, port, is_active=True) -> Device:
             "id": new_id,
             "name": name,
             "port": port,
+            "mode": mode,
+            "host": host,
             "is_active": bool(is_active),
             "last_message_at": None,
             "created_at": datetime.utcnow().isoformat(),
@@ -250,14 +259,14 @@ def add_device(name, port, is_active=True) -> Device:
 def update_device(record_id: int, **fields):
     with _lock:
         _ensure_loaded()
-        if "port" in fields:
-            port = int(fields["port"])
-            if _port_in_use(port, exclude_id=record_id):
-                raise ValueError(f"Port {port} is already used by another device.")
-            fields["port"] = port
         for d in _data["devices"]:
             if d["id"] == record_id:
-                for key in ("name", "port", "is_active"):
+                if "port" in fields:
+                    fields["port"] = int(fields["port"])
+                    mode = fields.get("mode", d.get("mode", "listen"))
+                    if mode == "listen" and _port_in_use(fields["port"], exclude_id=record_id):
+                        raise ValueError(f"Port {fields['port']} is already used by another device.")
+                for key in ("name", "port", "mode", "host", "is_active"):
                     if key in fields:
                         d[key] = fields[key]
                 _save()
@@ -317,7 +326,14 @@ def log_counts() -> dict:
         return {
             "total": len(_logs),
             "failed": sum(1 for l in _logs if l.status == "Failed"),
+            "success": sum(1 for l in _logs if l.status == "Success"),
         }
+
+
+def latest_log_id() -> int:
+    """ID of the newest in-memory message log, or 0 when there are none."""
+    with _lock:
+        return _next_log_id - 1
 
 
 # --------------------------------------------------------------------------- #

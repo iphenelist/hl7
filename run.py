@@ -36,7 +36,7 @@ PIP_BIN = os.path.join(
     VENV_DIR, "Scripts" if IS_WINDOWS else "bin", "pip.exe" if IS_WINDOWS else "pip"
 )
 
-PORT = int(os.environ.get("HL7_DASHBOARD_PORT", 5050))
+PORT = int(os.environ.get("HL7_DASHBOARD_PORT", 5151))
 DASHBOARD_URL = f"http://localhost:{PORT}"
 
 

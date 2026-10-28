@@ -1,11 +1,10 @@
 """
-JSON API endpoints for AJAX calls from the dashboard/devices/settings pages.
+JSON endpoints for listener status, the background service and updates.
 """
 import logging
 import os
 
 from flask import Blueprint, jsonify
-from app import store
 from app.services.hl7_listener import get_listener_status
 
 api_bp = Blueprint("api", __name__)
@@ -18,11 +17,6 @@ IS_BACKGROUND = os.environ.get("HL7_SERVICE_MODE") == "background"
 @api_bp.route("/status")
 def status():
     return jsonify(get_listener_status())
-
-
-@api_bp.route("/logs")
-def logs():
-    return jsonify([l.to_dict() for l in store.get_logs(limit=20)])
 
 
 @api_bp.route("/service/start", methods=["POST"])

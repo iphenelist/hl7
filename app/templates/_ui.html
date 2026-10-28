@@ -1,0 +1,232 @@
+{# Shared building blocks for the pages. Import with:
+   {% import "_ui.html" as ui %} #}
+
+{% macro icon(name, cls="") -%}
+<svg class="icon {{ cls }}" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#{{ name }}"/></svg>
+{%- endmacro %}
+
+{# A timestamp the browser shows in the viewer's time zone (app.js fills it in).
+   fmt: "rel" (4 min ago), "abs" (Oct 28, 11:55:32) or "full" (with year). #}
+{% macro time(iso, fmt="rel", empty="—") -%}
+{% if iso %}<time datetime="{{ iso }}" data-fmt="{{ fmt }}">{{ iso[:16] | replace("T", " ") }}</time>{% else %}{{ empty }}{% endif %}
+{%- endmacro %}
+
+{% macro badge(label, theme="gray", cls="") -%}
+<span class="badge {{ theme }} {{ cls }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro status_badge(status) -%}
+{% if status == "Success" %}{{ badge("Relayed", "green") }}{% elif status == "Failed" %}{{ badge("Failed", "red") }}{% else %}{{ badge(status or "Never") }}{% endif %}
+{%- endmacro %}
+
+{# A titled section. Use with {% call ui.card(...) %}body{% endcall %}. #}
+{% macro card(title, description=None, flush=False, actions=None) -%}
+<section class="card">
+  <div class="card-head">
+    <div style="min-width:0">
+      <h2 class="card-title">{{ title }}</h2>
+      {% if description %}<p class="card-desc">{{ description }}</p>{% endif %}
+    </div>
+    {% if actions %}<div class="row">{{ actions }}</div>{% endif %}
+  </div>
+  <div class="card-body{{ ' flush' if flush }}">{{ caller() }}</div>
+</section>
+{%- endmacro %}
+
+{% macro help(title, icon_name="info") -%}
+<aside class="help">
+  <h3>{{ icon(icon_name) }} {{ title }}</h3>
+  {{ caller() }}
+</aside>
+{%- endmacro %}
+
+{# A device's last messages as a row of bars, oldest on the left. #}
+{% macro strip(recent) -%}
+{% set failed = recent | selectattr("status", "equalto", "Failed") | list | length %}
+<div class="strip" role="img"
+     aria-label="{% if recent %}Last {{ recent | length }} messages: {{ recent | length - failed }} relayed, {{ failed }} failed{% else %}No messages yet{% endif %}"
+     title="{% if recent %}Last {{ recent | length }} messages: {{ recent | length - failed }} relayed, {{ failed }} failed{% else %}No messages yet{% endif %}">
+  {% for _ in range(10 - recent | length) %}<span></span>{% endfor %}
+  {% for bar in recent %}<span class="{{ 'fail' if bar.status == 'Failed' else 'ok' }}"></span>{% endfor %}
+</div>
+{%- endmacro %}
+
+{# The device list. `compact` (dashboard) drops search, filters and actions. #}
+{% macro device_list(devices, compact=False) -%}
+{% set attention = devices | selectattr("is_active") | rejectattr("online") | list %}
+{% set failing = devices | selectattr("is_active") | selectattr("online") | selectattr("last_log") | list
+   | selectattr("last_log.status", "equalto", "Failed") | list %}
+{% set inactive = devices | rejectattr("is_active") | list %}
+<div class="devices{{ ' compact' if compact }}" data-filter-group="devices">
+  {% if not devices %}
+    <div class="empty">
+      {{ icon("flask-conical") }}
+      <p class="empty-title">No lab machines yet</p>
+      <p style="margin-top:4px">Add a machine to open a port for it and start relaying its results to ERPNext.</p>
+      <a class="btn solid" href="{{ url_for('pages.new_device') }}" style="margin-top:16px">{{ icon("plus") }} Add device</a>
+    </div>
+  {% else %}
+    {% if not compact %}
+    <div class="toolbar">
+      <div class="input-wrap" style="width:16rem">
+        {{ icon("search") }}
+        <input class="input pad-left" type="search" placeholder="Search name, IP or port" aria-label="Search devices" data-filter-search>
+      </div>
+      <div class="tabs push" role="group" aria-label="Filter devices">
+        <button type="button" class="tab" data-filter-tab="all" aria-pressed="true">All {{ devices | length }}</button>
+        <button type="button" class="tab" data-filter-tab="attention" aria-pressed="false">Needs attention {{ attention | length + failing | length }}</button>
+        <button type="button" class="tab" data-filter-tab="inactive" aria-pressed="false">Inactive {{ inactive | length }}</button>
+      </div>
+    </div>
+    {% endif %}
+    <div class="list-head wide-only">
+      <div>Device</div><div>Recent messages</div><div>Connection</div><div>Last message</div><div></div>
+    </div>
+    {% for d in devices %}
+    {% set needs = d.is_active and (not d.online or (d.last_log and d.last_log.status == "Failed")) %}
+    <div class="list-row" data-row
+         data-search="{{ d.name | lower }} {{ d.port }} {{ d.host }}"
+         data-tags="{{ 'attention' if needs }} {{ 'inactive' if not d.is_active }}">
+      <div class="cell">
+        <span class="device-icon{{ ' off' if not d.is_active }}">
+          {{ icon("flask-conical", "icon-lg") }}
+          {% if d.is_active %}<span class="dot {{ 'green' if d.online else ('amber' if d.mode == 'connect' else 'red') }}"></span>{% endif %}
+        </span>
+        <div style="min-width:0">
+          <div class="row" style="flex-wrap:nowrap">
+            <span class="device-name truncate{{ ' off' if not d.is_active }}">{{ d.name }}</span>
+            {% if not d.is_active %}{{ badge("Inactive") }}{% endif %}
+          </div>
+          <div class="text-sm muted tnum">{{ "Connects to " if d.mode == "connect" }}{{ d.address }}</div>
+          <div class="row narrow-only" style="margin-top:4px;gap:4px 12px">
+            {{ strip(d.recent) }}
+            {% if d.is_active %}{{ badge(d.state.label, d.state.theme) }}{% endif %}
+            <span class="text-sm muted">{{ time(d.last_message_at, empty="No messages yet") }}</span>
+          </div>
+          {% if d.is_active and d.state.note and not d.online %}
+          <p class="reason {{ d.state.theme }} narrow-only">{{ d.state.note }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="cell wide-only">{{ strip(d.recent) }}</div>
+      <div class="cell wide-only">
+        <div style="min-width:0">
+          {{ badge(d.state.label, d.state.theme) }}
+          {% if d.is_active and d.state.note and not d.online %}
+          <p class="reason {{ d.state.theme }}" title="{{ d.error or '' }}" style="margin-top:4px">{{ d.state.note }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="cell wide-only">
+        {% if d.last_log %}
+        {% set log = d.last_log %}
+        <div style="min-width:0">
+          {% if log.status == "Failed" %}
+          <div class="truncate text-sm tone-red" style="font-weight:500">{{ log.lab_test_name or "Message" }} not relayed</div>
+          {% else %}
+          <div class="truncate text-sm" style="font-weight:500;color:var(--ink-gray-8)">{{ log.lab_test_name or "Message" }} relayed</div>
+          {% endif %}
+          <div class="truncate text-sm muted">{{ time(d.last_message_at) }}, {{ "See the message history" if log.status == "Failed" else log.erpnext_name }}</div>
+        </div>
+        {% else %}
+        <span class="text-sm faint">No messages yet</span>
+        {% endif %}
+      </div>
+      <div class="cell end">
+        {% if not compact %}
+        <button type="button" class="btn" data-action="toggle" data-id="{{ d.id }}"
+                title="{{ 'Deactivate' if d.is_active else 'Activate' }}">
+          <span class="wide-only">{{ "Deactivate" if d.is_active else "Activate" }}</span>
+          <span class="narrow-only">{{ icon("power") }}</span>
+        </button>
+        {% endif %}
+        <a class="btn ghost icon-only" href="{{ url_for('pages.device_logs', device_id=d.id) }}" title="Messages" aria-label="Messages">{{ icon("scroll-text") }}</a>
+        {% if not compact %}
+        <div class="menu-wrap">
+          <button type="button" class="btn ghost icon-only" data-menu aria-label="More actions" title="More actions" aria-expanded="false">{{ icon("ellipsis") }}</button>
+          <div class="menu" hidden>
+            <a class="menu-item" href="{{ url_for('pages.edit_device', device_id=d.id) }}">{{ icon("pencil") }} Edit</a>
+            <button type="button" class="menu-item red" data-action="delete" data-id="{{ d.id }}" data-name="{{ d.name }}"
+                    data-what="{{ ('The app stops connecting to ' ~ d.address ~ '.') if d.mode == 'connect' else ('Port ' ~ d.port ~ ' closes and the machine can no longer send messages here.') }}">{{ icon("trash-2") }} Delete</button>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div class="empty" data-no-match hidden style="padding:40px 16px">
+      No devices match these filters. <button type="button" class="btn ghost" data-filter-clear>Clear filters</button>
+    </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{# Message history rows. #}
+{% macro message_list(logs, erpnext_url, show_device=False,
+                      empty_text="No messages yet. They appear here as soon as a lab machine sends one.") -%}
+{% set failed = logs | selectattr("status", "equalto", "Failed") | list | length %}
+{% set device_names = logs | map(attribute="device_name") | unique | list %}
+<div class="messages{{ ' with-device' if show_device }}" data-filter-group="messages">
+  {% if not logs %}
+    <div class="empty">{{ icon("scroll-text") }}{{ empty_text }}</div>
+  {% else %}
+    <div class="toolbar">
+      <div class="tabs" role="group" aria-label="Filter messages">
+        <button type="button" class="tab" data-filter-tab="all" aria-pressed="true">All {{ logs | length }}</button>
+        <button type="button" class="tab" data-filter-tab="failed" aria-pressed="false">Failed {{ failed }}</button>
+      </div>
+      {% if show_device and device_names | length > 1 %}
+      <select class="input push" style="width:11rem" data-filter-device aria-label="Filter by device">
+        <option value="">All devices</option>
+        {% for name in device_names %}<option>{{ name }}</option>{% endfor %}
+      </select>
+      {% endif %}
+    </div>
+    <div class="list-head wide-only">
+      <div>When</div>{% if show_device %}<div>Device</div>{% endif %}<div>Machine</div><div>Lab test</div><div>Result</div><div>What happened</div>
+    </div>
+    {% for log in logs %}
+    {% set url = (erpnext_url ~ "/app/lab-machine-message/" ~ (log.erpnext_name | urlencode)) if erpnext_url and log.erpnext_name else None %}
+    <div class="list-row" data-row data-tags="{{ 'failed' if log.status == 'Failed' }}" data-device="{{ log.device_name }}">
+      <div class="cell">
+        <div class="text-sm" style="color:var(--ink-gray-8)">
+          {% if show_device %}<span class="narrow-only" style="display:inline;font-weight:500;margin-right:8px">{{ log.device_name }}</span>{% endif %}
+          {{ time(log.timestamp) }}
+        </div>
+        <div class="text-xs muted tnum wide-only">{{ time(log.timestamp, "abs") }}</div>
+        <div class="row narrow-only text-sm muted" style="gap:0 12px">
+          {% if log.lab_test_name %}<span style="color:var(--ink-gray-7)">{{ log.lab_test_name }}</span>{% endif %}
+          <span>{{ log.machine }}</span>
+        </div>
+        <div class="narrow-only" style="display:block;width:100%">{{ outcome(log, url) }}</div>
+      </div>
+      <div class="cell narrow-only" style="align-items:flex-end">{{ status_badge(log.status) }}</div>
+      {% if show_device %}<div class="cell wide-only text-sm"><span class="truncate">{{ log.device_name }}</span></div>{% endif %}
+      <div class="cell wide-only text-sm muted"><span class="truncate" title="{{ log.machine }}">{{ log.machine }}</span></div>
+      <div class="cell wide-only text-sm"><span class="truncate">{{ log.lab_test_name or "—" }}</span></div>
+      <div class="cell wide-only">{{ status_badge(log.status) }}</div>
+      <div class="cell wide-only">{{ outcome(log, url) }}</div>
+    </div>
+    {% endfor %}
+    <div class="empty" data-no-match hidden style="padding:40px 16px">No messages match this filter.</div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{# The ERPNext record a message created, or why it failed. #}
+{% macro outcome(log, url) -%}
+{% if url %}
+  <a class="link text-sm row" style="gap:4px" href="{{ url }}" target="_blank" rel="noopener" title="Open {{ log.erpnext_name }} in ERPNext">{{ log.erpnext_name }} {{ icon("external-link", "icon-xs") }}</a>
+{% elif log.erpnext_name %}
+  <span class="text-sm">{{ log.erpnext_name }}</span>
+{% elif log.error and log.explained %}
+  <div style="width:100%">
+    <div class="what"><p>{{ log.explained }}</p><button type="button" class="btn ghost sm" data-details aria-expanded="false">Details</button></div>
+    <p class="details" hidden>{{ log.error }}</p>
+  </div>
+{% elif log.error %}
+  <button type="button" class="raw-error" data-raw-error title="Show the full error">{{ log.error }}</button>
+{% else %}
+  <span class="text-sm faint">—</span>
+{% endif %}
+{%- endmacro %}

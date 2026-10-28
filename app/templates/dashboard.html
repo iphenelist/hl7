@@ -1,139 +1,49 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — HL7 Relay{% endblock %}
-
+{% set nav = "dashboard" %}
+{% block title %}Dashboard{% endblock %}
+{% block actions %}
+<a class="btn solid" href="{{ url_for('pages.new_device') }}">{{ ui.icon("plus") }}<span class="label">Add device</span></a>
+{% endblock %}
 {% block content %}
-<div class="page-header d-flex align-items-start justify-content-between">
-  <div>
-    <h1><i class="bi bi-grid-1x2 me-2" style="color:var(--accent)"></i>Dashboard</h1>
-    <p>Overview of all lab machine listeners and recent relayed messages.</p>
+<div class="page-body w-6xl stack" data-live style="--gap:24px">
+  {% if offline %}
+  <div class="alert red">
+    <div class="alert-title">{{ ui.icon("circle-x") }}
+      {% if offline | length == 1 %}{{ offline[0].name }} is not connected{% else %}{{ offline | length }} machines are not connected{% endif %}
+    </div>
+    <p class="alert-text">Their results can't reach ERPNext until the connection is up. Open Devices to see why.</p>
+    <a class="btn" href="{{ url_for('pages.devices') }}">Open devices</a>
   </div>
-  <a href="{{ url_for('devices.new') }}" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-lg me-1"></i> Add Device
-  </a>
-</div>
+  {% elif not erpnext_url %}
+  <div class="alert amber">
+    <div class="alert-title">{{ ui.icon("triangle-alert") }} ERPNext is not set up yet</div>
+    <p class="alert-text">Messages are received but can't be relayed until you add the ERPNext URL and API keys.</p>
+    <a class="btn" href="{{ url_for('pages.settings') }}">Open settings</a>
+  </div>
+  {% endif %}
 
-<!-- Stats row -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <div class="card stat-card">
-      <div class="stat-value text-white">{{ stats.total_devices }}</div>
-      <div class="stat-label"><i class="bi bi-hdd-network me-1"></i>Total Devices</div>
+  <div class="stats">
+    {% for label, value, icon, tone in [
+        ("Lab machines", stats.total_devices, "flask-conical", ""),
+        ("Online", stats.online, "radio-tower", "tone-green" if stats.online),
+        ("Messages received", stats.total_messages, "inbox", ""),
+        ("Relayed to ERPNext", stats.success, "circle-check-big", "tone-green" if stats.success),
+        ("Failed", stats.failed, "circle-x", "tone-red" if stats.failed)] %}
+    <div class="stat">
+      <div class="stat-value {{ tone }}">{{ "{:,}".format(value) }}</div>
+      <div class="stat-label">{{ ui.icon(icon, "icon-sm") }} {{ label }}</div>
     </div>
+    {% endfor %}
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card stat-card">
-      <div class="stat-value" style="color:var(--accent)">{{ stats.listening_devices }}</div>
-      <div class="stat-label"><i class="bi bi-broadcast me-1"></i>Listening</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card stat-card">
-      <div class="stat-value text-white">{{ stats.total_messages }}</div>
-      <div class="stat-label"><i class="bi bi-envelope-arrow-up me-1"></i>Messages Relayed</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card stat-card">
-      <div class="stat-value" style="color:#f85149">{{ stats.failed_messages }}</div>
-      <div class="stat-label"><i class="bi bi-x-circle me-1"></i>Failed</div>
-    </div>
-  </div>
-</div>
 
-<!-- Devices / listeners -->
-<div class="card mb-4">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <span><i class="bi bi-hdd-network me-2"></i>Listeners</span>
-    <a href="{{ url_for('devices.index') }}" class="btn btn-sm btn-outline-secondary">Manage devices</a>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-hover mb-0 card-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Port</th>
-          <th>Listener Status</th>
-          <th>Last Message</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for device in devices %}
-        {% set s = status.get(device.id, {}) %}
-        <tr>
-          <td data-label="Name">
-            <span class="status-dot {% if s.running %}online{% else %}offline{% endif %} me-1"></span>
-            {{ device.name }}
-          </td>
-          <td data-label="Port"><code style="color:#79c0ff">:{{ device.port }}</code></td>
-          <td data-label="Listener Status">
-            {% if s.running %}
-              <span class="badge badge-success-soft">Listening</span>
-            {% elif not device.is_active %}
-              <span class="badge badge-muted-soft">Inactive</span>
-            {% else %}
-              <span class="badge badge-danger-soft" title="{{ s.error or '' }}">Stopped</span>
-            {% endif %}
-          </td>
-          <td data-label="Last Message" style="font-size:0.8rem; color:#8b949e">
-            {{ device.last_message_at.strftime('%d %b %Y %H:%M') if device.last_message_at else '—' }}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="4" class="text-center py-4" style="color:#8b949e">
-            No devices yet. <a href="{{ url_for('devices.new') }}">Add your first device →</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+  {% set manage %}<a class="btn" href="{{ url_for('pages.devices') }}">Manage devices</a>{% endset %}
+  {% call ui.card("Lab machines", "Each machine sends its results to its own port, or the app connects to it.", flush=True, actions=manage) %}
+    {{ ui.device_list(devices, compact=True) }}
+  {% endcall %}
 
-<!-- Recent Messages -->
-<div class="card">
-  <div class="card-header"><i class="bi bi-journal-code me-2"></i>Recent Messages</div>
-  <div class="table-responsive">
-    <table class="table mb-0 card-table">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Device</th>
-          <th>Machine</th>
-          <th>Lab Test</th>
-          <th>Status</th>
-          <th>Detail</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for log in recent_logs %}
-        <tr>
-          <td data-label="Time" style="font-size:0.8rem; color:#8b949e; white-space:nowrap">
-            {{ log.timestamp.strftime('%d %b %H:%M:%S') }}
-          </td>
-          <td data-label="Device" style="font-size:0.875rem">{{ log.device_name }}</td>
-          <td data-label="Machine" style="font-size:0.8rem; color:#8b949e">
-            {{ log.machine_make or '—' }}{% if log.machine_model %} / {{ log.machine_model }}{% endif %}
-          </td>
-          <td data-label="Lab Test" style="font-size:0.875rem">{{ log.lab_test_name or '—' }}</td>
-          <td data-label="Status">
-            {% if log.status == 'Success' %}
-              <span class="badge badge-success-soft">Success</span>
-            {% else %}
-              <span class="badge badge-danger-soft">Failed</span>
-            {% endif %}
-          </td>
-          <td data-label="Detail" style="font-size:0.8rem; color:#8b949e" title="{{ log.error or '' }}">
-            {{ log.erpnext_name or log.error or '—' }}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="6" class="text-center py-4" style="color:#8b949e">No messages yet.</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% set recent_desc %}The last 20 messages from any machine. Times in <span data-tz>your time zone</span>, updates live.{% endset %}
+  {% call ui.card("Recent messages", recent_desc, flush=True) %}
+    {{ ui.message_list(logs, erpnext_url, show_device=True) }}
+  {% endcall %}
 </div>
 {% endblock %}

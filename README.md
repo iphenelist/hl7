@@ -31,7 +31,7 @@ Nothing needs to be installed first. The script:
    `~/hl7-relay` on Linux or `%LOCALAPPDATA%\HL7Relay` on Windows
    (override with the `HL7_RELAY_HOME` environment variable)
 3. Creates the virtual environment, installs the Python packages, starts the
-   app, and opens http://localhost:5050 in your browser
+   app, and opens http://localhost:5151 in your browser
 
 So the setup script alone is enough to install on a fresh machine. On Linux
 you can also run:
@@ -110,15 +110,15 @@ hl7/
 │   ├── __init__.py               Flask app factory
 │   ├── store.py                  config.json persistence + in-memory message log
 │   ├── routes/
-│   │   ├── dashboard.py          Main dashboard
-│   │   ├── devices.py            Device (lab machine) CRUD
-│   │   ├── settings.py           ERPNext settings
-│   │   └── api.py                JSON API (status, service management)
+│   │   ├── pages.py              The web pages (dashboard, devices, settings)
+│   │   ├── ui_api.py             JSON actions the page buttons call (/api/ui/*)
+│   │   └── api.py                JSON API (status, service management, updates)
 │   ├── services/
 │   │   ├── hl7_listener.py       Multi-device MLLP listener manager (asyncio)
 │   │   ├── erpnext_service.py    ERPNext REST API client
 │   │   └── updater.py            Git-based update checks + safe apply
-│   └── templates/                Jinja2 HTML templates
+│   ├── templates/                Jinja2 page templates (_ui.html holds shared pieces)
+│   └── static/                   frappe.css, app.js, icons.svg, font, favicon
 ├── config.py
 ├── run.py                        Auto-bootstrap launcher (venv + deps + start)
 ├── server.py                     Flask server entry point
@@ -127,6 +127,20 @@ hl7/
 ├── setup_windows.bat             One-click setup (Windows)
 └── requirements.txt
 ```
+
+## Web Interface
+
+The interface at `http://localhost:5151` looks like Frappe v16 but uses no
+framework and has no build step: Flask renders the pages from
+`app/templates`, styled by one stylesheet (`app/static/frappe.css`, which
+carries frappe-ui's colour tokens for light and dark mode) and made
+interactive by one small script (`app/static/app.js`). Icons are
+[Lucide](https://lucide.dev) symbols in `app/static/icons.svg`; the font is
+Inter, cut down to Latin characters.
+
+To change the interface, edit those files and reload the page. No Node.js,
+npm or build is ever needed. To add an icon, copy its `<path>` elements from
+lucide.dev into a new `<symbol id="name">` in `icons.svg`.
 
 ## Running in Production (background service)
 

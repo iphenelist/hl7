@@ -1,53 +1,80 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if device else 'Add' }} Device — HL7 Relay{% endblock %}
-
+{% set nav = "devices" %}
+{% set mode = device.mode if device else "listen" %}
+{% block title %}{{ "Edit device" if device else "Add device" }}{% endblock %}
+{% block back %}<a class="btn ghost icon-only back" href="{{ url_for('pages.devices') }}" aria-label="Back to devices">{{ ui.icon("chevron-left") }}</a>{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>
-    <i class="bi bi-hdd-network me-2" style="color:var(--accent)"></i>
-    {{ 'Edit Device' if device else 'Add Device' }}
-  </h1>
-  <p>{{ 'Update this lab machine\'s listener settings.' if device else 'Register a new lab machine — it gets its own dedicated MLLP port.' }}</p>
-</div>
+<div class="page-body w-5xl with-aside at-lg mode-{{ mode }}" data-mode-root>
+  {% call ui.card("Device details",
+                  "Saving restarts this machine's connection on the new settings." if device else "Register a lab machine and choose how it connects.") %}
+  <form class="stack" style="--gap:20px" data-device-form data-id="{{ device.id if device else '' }}" novalidate>
+    <label class="field">
+      <span class="field-label">Device name <span class="req">*</span></span>
+      <input class="input" name="name" required placeholder="e.g. Hematology Analyzer" value="{{ device.name if device else '' }}">
+    </label>
 
-<div class="row">
-  <div class="col-12 col-md-7 col-lg-5">
-    <div class="card">
-      <div class="card-header">Device Details</div>
-      <div class="card-body p-4">
-        <form method="POST">
-          <div class="mb-3">
-            <label class="form-label text-muted" style="font-size:0.8rem">Device Name</label>
-            <input type="text" name="name" class="form-control"
-              placeholder="e.g. Hematology Analyzer" required
-              value="{{ device.name if device else '' }}">
-          </div>
-          <div class="mb-3">
-            <label class="form-label text-muted" style="font-size:0.8rem">MLLP Port</label>
-            <input type="number" name="port" class="form-control"
-              placeholder="5600" min="1" max="65535" required
-              value="{{ device.port if device else 5600 }}">
-            <div class="form-text" style="font-size:0.75rem">
-              Must be unique across devices. Point this machine's HL7 interface at this port.
-            </div>
-          </div>
-          <div class="mb-4">
-            <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
-                {% if not device or device.is_active %}checked{% endif %}>
-              <label class="form-check-label" for="isActive" style="font-size:0.875rem">
-                Active (bind the listener on this port)
-              </label>
-            </div>
-          </div>
-          <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary btn-sm">
-              <i class="bi bi-check-lg me-1"></i>{{ 'Save Changes' if device else 'Add Device' }}
-            </button>
-            <a href="{{ url_for('devices.index') }}" class="btn btn-sm btn-outline-secondary">Cancel</a>
-          </div>
-        </form>
-      </div>
+    <label class="field">
+      <span class="field-label">Connection</span>
+      <select class="input" name="mode" data-mode-select>
+        <option value="listen" {{ "selected" if mode == "listen" }}>The machine sends to this computer</option>
+        <option value="connect" {{ "selected" if mode == "connect" }}>The app connects to the machine</option>
+      </select>
+      <span class="field-help" data-mode="listen">Most machines: they connect to this computer and push their results.</span>
+      <span class="field-help" data-mode="connect">For machines that act as the server, such as the Mindray BS-240 and BS-430.</span>
+    </label>
+
+    <label class="field" data-mode="connect">
+      <span class="field-label">Machine IP address <span class="req">*</span></span>
+      <input class="input" name="host" placeholder="e.g. 10.10.10.129" value="{{ device.host if device else '' }}" data-bind="host">
+    </label>
+
+    <label class="field">
+      <span class="field-label">Port <span class="req">*</span></span>
+      <input class="input" name="port" type="number" min="1" max="65535" required value="{{ suggested_port }}" data-bind="port">
+      <span class="field-help" data-mode="listen">{% if listen_ports %}Must be different from the other machines: {{ listen_ports }}.{% else %}The port this machine sends its messages to.{% endif %}</span>
+      <span class="field-help" data-mode="connect">The LIS port configured on the machine.</span>
+    </label>
+
+    <label class="switch-row">
+      <span>
+        <span class="field-label">Active</span>
+        <span class="field-help" data-mode="listen">Open the port and accept messages from this machine.</span>
+        <span class="field-help" data-mode="connect">Connect to this machine and relay its messages.</span>
+      </span>
+      <input class="switch" type="checkbox" name="is_active" {{ "checked" if not device or device.is_active }}>
+    </label>
+
+    <p class="form-error" data-form-error hidden></p>
+
+    <div class="row">
+      <button type="submit" class="btn solid">{{ ui.icon("check") }} {{ "Save changes" if device else "Add device" }}</button>
+      <a class="btn" href="{{ url_for('pages.devices') }}">Cancel</a>
+    </div>
+  </form>
+  {% endcall %}
+
+  <div>
+    <div data-mode="connect">
+    {% call ui.help("On the lab machine") %}
+      <p>In its LIS or HL7 settings, set the machine to act as the server, then copy its:</p>
+      <dl style="margin-top:8px">
+        <div><dt>IP address</dt><dd class="tnum" data-show="host">{{ device.host if device and device.host else "—" }}</dd></div>
+        <div><dt>Port</dt><dd class="tnum" data-show="port">{{ suggested_port }}</dd></div>
+        <div><dt>Protocol</dt><dd>HL7 over MLLP (TCP)</dd></div>
+      </dl>
+      <p style="margin-top:12px">The app keeps the connection open and reconnects on its own if the machine restarts or the network drops.</p>
+    {% endcall %}
+    </div>
+    <div data-mode="listen">
+    {% call ui.help("On the lab machine") %}
+      <p>In its LIS or HL7 connection settings, enter:</p>
+      <dl style="margin-top:8px">
+        <div><dt>Host or server IP</dt><dd class="tnum">{{ lan_ip or "This computer's IP address" }}</dd></div>
+        <div><dt>Port</dt><dd class="tnum" data-show="port">{{ suggested_port }}</dd></div>
+        <div><dt>Protocol</dt><dd>HL7 over MLLP (TCP)</dd></div>
+      </dl>
+      <p style="margin-top:12px">Use a port above 1024 that no other program on this computer uses.</p>
+    {% endcall %}
     </div>
   </div>
 </div>
