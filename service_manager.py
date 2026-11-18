@@ -255,14 +255,13 @@ def _install_windows() -> dict:
             capture_output=True, timeout=15,
         )
 
-        # Create a new task that runs at logon
+        # Create a new task that runs at logon (normal user privilege)
         result = subprocess.run(
             [
                 "schtasks", "/create",
                 "/tn", TASK_NAME,
                 "/tr", f'"{pythonw}" "{server_py}"',
                 "/sc", "onlogon",
-                "/rl", "highest",
                 "/f",
             ],
             capture_output=True, text=True, timeout=15,
